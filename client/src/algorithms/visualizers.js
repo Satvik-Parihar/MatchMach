@@ -4,12 +4,11 @@ export const naiveGenerator = function* (text, pattern) {
     const m = pattern.length;
 
     for (let i = 0; i <= n - m; i++) {
-        // Highlight the window we are checking
         yield {
             textIndex: i,
             patternIndex: 0,
             state: 'window',
-            message: `Checking window ensuring at index ${i}`
+            message: `Checking window starting at index ${i}`
         };
 
         let j;
@@ -19,7 +18,8 @@ export const naiveGenerator = function* (text, pattern) {
                 textIndex: i + j,
                 patternIndex: j,
                 state: isMatch ? 'match' : 'mismatch',
-                message: isMatch ? `Compute: ${text[i + j]} == ${pattern[j]}` : `Mismatch: ${text[i + j]} != ${pattern[j]}`
+                message: isMatch ? `Match at index ${i + j}` : `Mismatch at index ${i + j}`,
+                matchType: isMatch ? 'hit' : 'miss' // Helpers for history/stats
             };
 
             if (!isMatch) {
@@ -42,8 +42,7 @@ export const kmpGenerator = function* (text, pattern) {
     const n = text.length;
     const m = pattern.length;
 
-    // Compute LPS - Yielding steps for LPS computation could be separate, 
-    // but here we just compute it for the search phase.
+    // Compute LPS
     const lps = Array(m).fill(0);
     let len = 0;
     let i = 1;
@@ -62,17 +61,26 @@ export const kmpGenerator = function* (text, pattern) {
         }
     }
 
-    let textIdx = 0; // i
-    let patIdx = 0;  // j
+    // Yield initial state with LPS table
+    yield {
+        textIndex: -1,
+        patternIndex: -1,
+        state: 'init',
+        message: 'LPS Table Computed',
+        lps: [...lps] // Pass LPS table
+    };
+
+    let textIdx = 0;
+    let patIdx = 0;
 
     while (textIdx < n) {
-        // Highlight comparison
         const isMatch = text[textIdx] === pattern[patIdx];
         yield {
             textIndex: textIdx,
             patternIndex: patIdx,
             state: isMatch ? 'match' : 'mismatch',
-            message: isMatch ? `Match at ${textIdx}` : `Mismatch at ${textIdx}`
+            message: isMatch ? `Match at text[${textIdx}]` : `Mismatch at text[${textIdx}] vs pattern[${patIdx}]`,
+            lps: [...lps]
         };
 
         if (pattern[patIdx] === text[textIdx]) {
@@ -85,7 +93,8 @@ export const kmpGenerator = function* (text, pattern) {
                 textIndex: textIdx - patIdx,
                 patternIndex: patIdx - 1,
                 state: 'found',
-                message: `Pattern found at index ${textIdx - patIdx}`
+                message: `Pattern found at index ${textIdx - patIdx}`,
+                lps: [...lps]
             };
             patIdx = lps[patIdx - 1];
         } else if (textIdx < n && pattern[patIdx] !== text[textIdx]) {
@@ -94,7 +103,8 @@ export const kmpGenerator = function* (text, pattern) {
                     textIndex: textIdx,
                     patternIndex: patIdx,
                     state: 'shift',
-                    message: `Mismatch after partial match. Shifting pattern using LPS.`
+                    message: `Mismatch! patIdx was ${patIdx}, shifting to LPS[${patIdx - 1}] = ${lps[patIdx - 1]}`,
+                    lps: [...lps]
                 };
                 patIdx = lps[patIdx - 1];
             } else {
@@ -102,7 +112,7 @@ export const kmpGenerator = function* (text, pattern) {
             }
         }
     }
-    yield { state: 'finished', message: 'Search Completed' };
+    yield { state: 'finished', message: 'Search Completed', lps: [...lps] };
 };
 
 export const rabinKarpGenerator = function* (text, pattern) {
@@ -114,12 +124,10 @@ export const rabinKarpGenerator = function* (text, pattern) {
     let t = 0;
     let h = 1;
 
-    // H value
     for (let i = 0; i < m - 1; i++) {
         h = (h * d) % q;
     }
 
-    // Calculate hash
     for (let i = 0; i < m; i++) {
         p = (d * p + pattern.charCodeAt(i)) % q;
         t = (d * t + text.charCodeAt(i)) % q;
@@ -128,9 +136,11 @@ export const rabinKarpGenerator = function* (text, pattern) {
     for (let i = 0; i <= n - m; i++) {
         yield {
             textIndex: i,
-            patternIndex: 0,
+            patternIndex: -1,
             state: 'window',
-            message: `Checking hash: P(${p}) vs T(${t})`
+            message: `Comparing Hash Values`,
+            hashP: p,
+            hashT: t
         };
 
         if (p === t) {
@@ -138,7 +148,9 @@ export const rabinKarpGenerator = function* (text, pattern) {
                 textIndex: i,
                 patternIndex: 0,
                 state: 'hash-match',
-                message: `Hash Match! Checking characters...`
+                message: `Hash Match! Checking characters...`,
+                hashP: p,
+                hashT: t
             };
 
             let j;
@@ -148,7 +160,9 @@ export const rabinKarpGenerator = function* (text, pattern) {
                     textIndex: i + j,
                     patternIndex: j,
                     state: isMatch ? 'match' : 'mismatch',
-                    message: isMatch ? `Char Match: ${text[i + j]}` : `Char Mismatch`
+                    message: isMatch ? `Char Match: ${text[i + j]}` : `Char Mismatch`,
+                    hashP: p,
+                    hashT: t
                 };
                 if (!isMatch) break;
             }
@@ -157,15 +171,19 @@ export const rabinKarpGenerator = function* (text, pattern) {
                     textIndex: i,
                     patternIndex: 0,
                     state: 'found',
-                    message: `Pattern found at ${i}`
+                    message: `Pattern found at ${i}`,
+                    hashP: p,
+                    hashT: t
                 };
             }
         } else {
             yield {
                 textIndex: i,
-                patternIndex: 0,
+                patternIndex: -1, // No specific character pattern index during hash check
                 state: 'hash-mismatch',
-                message: `Hash Mismatch`
+                message: `Hash Mismatch: ${p} != ${t}`,
+                hashP: p,
+                hashT: t
             };
         }
 

@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "server": "cd server && npx nodemon index.js",
     "client": "cd client && npm run dev",
-    "dev": "start npm run server && start npm run client"
+    "dev": "node dev.js"
   },
   "repository": {
     "type": "git",

@@ -1,314 +1,474 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, RotateCcw, BarChart2, Activity, Zap } from 'lucide-react';
+import {
+  Play, Pause, RotateCcw, Zap,
+  BookOpen, Activity, Layout, Info,
+  ChevronLeft, ChevronRight, Hash, Table as TableIcon,
+  CheckCircle, XCircle
+} from 'lucide-react';
 import { naiveGenerator, kmpGenerator, rabinKarpGenerator } from './algorithms/visualizers';
+import { algorithmTheory } from './data/theory';
 import './index.css';
 
 const ALGOS = {
-  naive: { name: 'Naive Algorithm', generator: naiveGenerator },
-  kmp: { name: 'Knuth-Morris-Pratt (KMP)', generator: kmpGenerator },
-  rk: { name: 'Rabin-Karp', generator: rabinKarpGenerator }
+  naive: { name: 'Naive Search', id: 'naive', generator: naiveGenerator },
+  kmp: { name: 'KMP Algorithm', id: 'kmp', generator: kmpGenerator },
+  rk: { name: 'Rabin-Karp', id: 'rk', generator: rabinKarpGenerator }
 };
 
 function App() {
+  const [activeTab, setActiveTab] = useState('visualizer');
   const [text, setText] = useState('ABABDABACDABABCABAB');
   const [pattern, setPattern] = useState('ABABCABAB');
   const [selectedAlgo, setSelectedAlgo] = useState('naive');
 
   // Visualization State
-  const [visState, setVisState] = useState({
-    textIndex: -1,
-    patternIndex: -1,
-    state: 'idle', // idle, window, match, mismatch, found
-    message: 'Ready to start'
-  });
-  const [foundIndices, setFoundIndices] = useState([]);
   const [history, setHistory] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(500); // ms
+  const [speed, setSpeed] = useState(500);
+  const [foundIndices, setFoundIndices] = useState([]);
 
-  // Comparison State
-  const [comparisonData, setComparisonData] = useState(null);
   const generatorRef = useRef(null);
   const timerRef = useRef(null);
+
+  // Derived current state
+  const visState = history[currentStep] || {
+    textIndex: -1,
+    patternIndex: -1,
+    state: 'idle',
+    message: 'Ready to start'
+  };
 
   const resetVisualization = () => {
     setIsPlaying(false);
     if (timerRef.current) clearInterval(timerRef.current);
-    setVisState({ textIndex: -1, patternIndex: -1, state: 'idle', message: 'Ready' });
-    setFoundIndices([]);
     setHistory([]);
+    setCurrentStep(0);
+    setFoundIndices([]);
     generatorRef.current = null;
+
+    // Initialize with idle state
+    setHistory([{
+      textIndex: -1,
+      patternIndex: -1,
+      state: 'idle',
+      message: 'Ready to start'
+    }]);
   };
 
-  const startVisualization = () => {
+  // Initialize on load
+  useEffect(() => {
+    resetVisualization();
+  }, [selectedAlgo, text, pattern]);
+
+  const generateNextStep = () => {
     if (!generatorRef.current) {
       generatorRef.current = ALGOS[selectedAlgo].generator(text, pattern);
-      setFoundIndices([]); // Clear previous found
     }
-    setIsPlaying(true);
-  };
-
-  const pauseVisualization = () => {
-    setIsPlaying(false);
-    if (timerRef.current) clearInterval(timerRef.current);
-  };
-
-  const stepForward = () => {
-    if (!generatorRef.current) return;
 
     const { value, done } = generatorRef.current.next();
 
     if (done) {
-      setIsPlaying(false);
-      setVisState(prev => ({ ...prev, message: 'Search Completed!', state: 'finished' }));
+      return null;
+    }
+    return value;
+  };
+
+  const nextStep = () => {
+    // If we are reviewing history, just move forward
+    if (currentStep < history.length - 1) {
+      setCurrentStep(c => c + 1);
       return;
     }
 
-    setVisState(prev => ({ ...prev, ...value }));
+    // Generate new step
+    const step = generateNextStep();
+    if (step) {
+      setHistory(prev => [...prev, step]);
+      setCurrentStep(c => c + 1);
 
-    if (value.state === 'found') {
-      setFoundIndices(prev => [...prev, value.textIndex]);
+      if (step.state === 'found') {
+        setFoundIndices(prev => [...prev, step.textIndex]);
+      }
+    } else {
+      setIsPlaying(false);
+    }
+  };
+
+  const prevStep = () => {
+    if (currentStep > 0) {
+      setCurrentStep(c => c - 1);
     }
   };
 
   useEffect(() => {
     if (isPlaying) {
-      timerRef.current = setInterval(stepForward, speed);
+      timerRef.current = setInterval(nextStep, speed);
     } else {
       clearInterval(timerRef.current);
     }
     return () => clearInterval(timerRef.current);
-  }, [isPlaying, speed]);
+  }, [isPlaying, speed, history]); // Add history dependency to keep loop fresh if needed
 
-  const handleCompare = async () => {
-    try {
-      const res = await axios.post('http://localhost:5000/api/compare', { text, pattern });
-      setComparisonData(res.data);
-    } catch (err) {
-      console.error(err);
-      alert('Error fetching comparison data');
-    }
-  };
+
+  // Box size + gap for pattern calculations (56px + 8px gap)
+  const BOX_OFFSET = 64;
+  const patternOffset = visState.textIndex >= 0
+    ? (visState.textIndex - (visState.patternIndex >= 0 ? visState.patternIndex : 0))
+    : 0;
 
   return (
-    <div className="min-h-screen p-8 flex flex-col items-center">
-      {/* Header */}
-      <header className="w-full max-w-6xl mb-10 flex justify-between items-center glass-panel p-6">
-        <div>
-          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-pink-400">
-            MatchMach
-          </h1>
-          <p className="text-gray-400 text-sm mt-1">String Matching Algorithm Visualizer & Comparator</p>
-        </div>
-        <div className="flex gap-4">
-          {/* Algorithm Selector */}
-          <div className="flex bg-slate-800 rounded-lg p-1">
-            {Object.keys(ALGOS).map(key => (
-              <button
-                key={key}
-                onClick={() => { setSelectedAlgo(key); resetVisualization(); }}
-                className={`px-4 py-2 rounded-md text-sm transition-all ${selectedAlgo === key ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-              >
-                {key.toUpperCase()}
-              </button>
-            ))}
+    <div className="flex h-screen bg-[var(--bg-main)] text-[var(--text-main)] overflow-hidden font-sans selection:bg-indigo-500/30">
+
+      {/* SIDEBAR */}
+      <aside className="w-80 bg-[var(--bg-panel)] border-r border-[var(--border)] flex flex-col z-20 shrink-0 shadow-2xl">
+        <div className="p-8 border-b border-[var(--border)]">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/10">
+              <Layout className="text-white" size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-white leading-tight">MatchMach</h1>
+              <p className="text-xs text-[var(--text-muted)] font-medium">Visual Algorithm Engine</p>
+            </div>
           </div>
         </div>
-      </header>
 
-      {/* Main Grid */}
-      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <nav className="p-6 space-y-2 flex-1 overflow-y-auto">
+          <p className="px-2 py-2 text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Navigation</p>
+          <button
+            onClick={() => setActiveTab('visualizer')}
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all ${activeTab === 'visualizer' ? 'bg-[var(--bg-sub)] text-white border border-[var(--border)] shadow-sm' : 'text-[var(--text-muted)] hover:bg-[var(--bg-sub)] hover:text-white'
+              }`}
+          >
+            <Activity size={20} className={activeTab === 'visualizer' ? 'text-indigo-400' : ''} /> Visualizer Canvas
+          </button>
+          <button
+            onClick={() => setActiveTab('theory')}
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all ${activeTab === 'theory' ? 'bg-[var(--bg-sub)] text-white border border-[var(--border)] shadow-sm' : 'text-[var(--text-muted)] hover:bg-[var(--bg-sub)] hover:text-white'
+              }`}
+          >
+            <BookOpen size={20} className={activeTab === 'theory' ? 'text-indigo-400' : ''} /> Theory & Concepts
+          </button>
 
-        {/* Left Column: Controls & Inputs */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="glass-panel p-6 space-y-4">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-              <Zap className="text-yellow-400" size={20} /> Configuration
-            </h2>
+          <p className="px-2 py-2 mt-8 text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Configuration</p>
 
-            <div>
-              <label className="block text-gray-400 text-sm mb-2">Text String</label>
-              <textarea
+          <div className="p-4 rounded-xl bg-[var(--bg-sub)] border border-[var(--border)] space-y-5">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">Text String</label>
+              <input
                 value={text}
                 onChange={e => { setText(e.target.value); resetVisualization(); }}
-                className="input-field h-24 font-mono text-sm tracking-widest"
+                className="input-field"
+                spellCheck="false"
               />
             </div>
-
-            <div>
-              <label className="block text-gray-400 text-sm mb-2">Pattern to Find</label>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">Pattern</label>
               <input
                 value={pattern}
                 onChange={e => { setPattern(e.target.value); resetVisualization(); }}
-                className="input-field font-mono text-sm tracking-widest"
+                className="input-field"
+                spellCheck="false"
               />
             </div>
-
-            <div className="pt-4 border-t border-gray-700">
-              <label className="block text-gray-400 text-sm mb-2">Speed: {speed}ms</label>
+            <div className="space-y-3 pt-2">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">Animation Speed</label>
+                <span className="text-xs text-indigo-400 font-mono font-bold bg-indigo-500/10 px-2 py-0.5 rounded">{speed}ms</span>
+              </div>
               <input
-                type="range"
-                min="50" max="1000" step="50"
-                value={speed}
-                onChange={e => setSpeed(Number(e.target.value))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                type="range" min="50" max="1000" step="50"
+                value={speed} onChange={e => setSpeed(Number(e.target.value))}
+                className="w-full h-1.5 bg-[var(--bg-main)] rounded-full appearance-none cursor-pointer accent-indigo-500"
               />
             </div>
           </div>
+        </nav>
+      </aside>
 
-          <div className="glass-panel p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <Activity className="text-indigo-400" size={20} /> Controls
-            </h2>
-            <div className="flex gap-2">
-              {!isPlaying ? (
-                <button onClick={startVisualization} className="btn w-full justify-center">
-                  <Play size={18} /> Start
+
+      {/* MAIN CONTENT AREA */}
+      <main className="flex-1 overflow-hidden flex flex-col relative z-10 h-screen">
+
+        {activeTab === 'visualizer' && (
+          <div className="shrink-0 h-20 border-b border-[var(--border)] bg-[var(--bg-panel)] flex items-center px-8 justify-between z-20 shadow-sm">
+            <div className="flex items-center gap-2 bg-[var(--bg-sub)] p-1.5 rounded-xl border border-[var(--border)]">
+              {Object.keys(ALGOS).map(key => (
+                <button
+                  key={key}
+                  onClick={() => { setSelectedAlgo(key); resetVisualization(); }}
+                  className={`px-5 py-2 rounded-lg text-xs font-bold uppercase transition-all tracking-wide ${selectedAlgo === key ? 'bg-[var(--bg-panel)] text-white shadow-md border border-[var(--border)]' : 'text-[var(--text-muted)] hover:text-white'
+                    }`}
+                >
+                  {ALGOS[key].name}
                 </button>
-              ) : (
-                <button onClick={pauseVisualization} className="btn btn-secondary w-full justify-center">
-                  <Pause size={18} /> Pause
-                </button>
-              )}
-              <button onClick={resetVisualization} className="btn btn-secondary w-12 justify-center">
-                <RotateCcw size={18} />
-              </button>
+              ))}
             </div>
 
-            <div className="mt-4 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
-              <p className="text-sm text-gray-400 font-mono">
-                {visState.message}
-              </p>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 mr-4 text-sm font-mono text-[var(--text-muted)] border-r border-[var(--border)] pr-8 h-8">
+                <span>Step: <span className="text-white font-bold">{currentStep}</span></span>
+                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${visState.state === 'match' ? 'bg-emerald-500/10 text-emerald-500' :
+                  visState.state === 'mismatch' ? 'bg-red-500/10 text-red-500' :
+                    'bg-indigo-500/10 text-indigo-400'
+                  }`}>
+                  {visState.message.slice(0, 30)}{visState.message.length > 30 ? '...' : ''}
+                </span>
+              </div>
+
+              <div className="flex items-center bg-[var(--bg-sub)] rounded-lg p-1 gap-1 border border-[var(--border)]">
+                <button onClick={prevStep} className="p-2 hover:text-white text-[var(--text-muted)] transition-colors rounded-md" disabled={currentStep === 0}><ChevronLeft size={18} /></button>
+                <button onClick={isPlaying ? () => setIsPlaying(false) : () => setIsPlaying(true)} className="p-2 hover:text-white text-indigo-400 transition-colors rounded-md font-bold">
+                  {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+                </button>
+                <button onClick={nextStep} className="p-2 hover:text-white text-[var(--text-muted)] transition-colors rounded-md"><ChevronRight size={18} /></button>
+              </div>
+
+              <button onClick={resetVisualization} className="btn-outline px-4 py-2.5" title="Reset Simulation"><RotateCcw size={18} /></button>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Middle/Right: Visualization */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="glass-panel p-8 min-h-[400px] flex flex-col justify-center relative overflow-hidden">
-            <h2 className="absolute top-6 left-6 text-xl font-semibold text-gray-300">
-              {ALGOS[selectedAlgo].name} Visualization
-            </h2>
+        {/* Content Body */}
+        <div className={`flex-1 ${activeTab === 'visualizer' ? 'overflow-hidden flex flex-col items-center justify-center' : 'overflow-y-auto custom-scrollbar'} bg-[var(--bg-main)]`}>
 
-            {/* Visualizer Container */}
-            <div className="w-full overflow-x-auto pb-8">
-              <div className="min-w-max">
-                {/* Text Array */}
-                <div className="flex gap-2 mb-8">
-                  {text.split('').map((char, i) => {
-                    let status = '';
-                    if (foundIndices.includes(i)) status = 'found'; // Start of found pattern
-                    else if (i === visState.textIndex) {
-                      if (visState.state === 'match') status = 'match';
-                      else if (visState.state === 'mismatch') status = 'mismatch';
-                      else status = 'active'; // Window or check
-                    }
+          {activeTab === 'visualizer' && (
+            <div className="w-full h-full flex flex-col items-center relative p-8">
 
-                    // Keep 'found' status for whole pattern length? 
-                    // The generator returns start index. Let's make it simpler.
-                    // Check if i is within any found range [foundIndex, foundIndex + m]
-                    const isFound = foundIndices.some(startIdx => i >= startIdx && i < startIdx + pattern.length);
+              {/* VISUALIZATION CANVAS */}
+              <div className="flex-1 w-full max-w-full overflow-x-auto p-4 flex flex-col items-center justify-center no-scrollbar">
 
-                    return (
-                      <motion.div
-                        key={i}
-                        layout
-                        className={`char-box text-lg ${isFound ? 'found' : status}`}
-                      >
-                        {char}
-                        <div className="absolute -bottom-5 text-[10px] text-gray-500 font-mono">{i}</div>
-                      </motion.div>
-                    );
-                  })}
+                {/* Text Row */}
+                <div className="relative mb-2">
+                  <div className="absolute -left-20 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.2em] -rotate-90">Text</div>
+                  <div className="flex gap-2">
+                    {text.split('').map((char, i) => {
+                      let status = '';
+                      const isRkWindow = selectedAlgo === 'rk' && ['window', 'hash-mismatch', 'hash-match'].includes(visState.state);
+
+                      // Check if index is in found indices (final or partial history)
+                      if (foundIndices.some(idx => i >= idx && i < idx + pattern.length)) {
+                        status = 'found';
+                      } else if (isRkWindow && i >= visState.textIndex && i < visState.textIndex + pattern.length) {
+                        // Highlight full window for RK hash check
+                        if (visState.state === 'hash-mismatch') status = 'mismatch';
+                        else status = 'active'; // hash-match or window -> active/blue
+                      } else if (i === visState.textIndex) {
+                        status = visState.state;
+                      }
+
+                      return (
+                        <div key={i} className="flex flex-col items-center gap-3">
+                          <motion.div layout className={`char-box ${status} ${i === visState.textIndex ? 'active' : ''} ${status === 'found' ? 'found' : ''}`}>
+                            {char}
+                          </motion.div>
+                          <span className={`text-xs font-mono font-medium ${i === visState.textIndex ? 'text-indigo-400' : 'text-[var(--text-muted)]'}`}>{i}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Pattern Array (Floating) */}
-                <AnimatePresence>
-                  {visState.state !== 'idle' && visState.state !== 'finished' && (
-                    <motion.div
-                      className="flex gap-2 p-2 rounded-lg bg-slate-800/80 border border-indigo-500/30 w-fit"
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{
-                        opacity: 1,
-                        y: 0,
-                        x: visState.textIndex * 48 - (visState.patternIndex * 48) // Align pattern visually
-                      }}
-                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                    >
-                      {pattern.split('').map((char, j) => (
-                        <div
-                          key={j}
-                          className={`char-box text-lg ${j === visState.patternIndex ? 'active' : ''}`}
-                        >
-                          {char}
-                          <div className="absolute -bottom-5 text-[10px] text-gray-500 font-mono">{j}</div>
-                        </div>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
+                {/* Pattern Row */}
+                <div className="h-[120px] w-full flex justify-center mt-4">
+                  <AnimatePresence>
+                    {visState.state !== 'idle' && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 30 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="relative"
+                        style={{ width: `${text.length * BOX_OFFSET}px` }}
+                      >
+                        <div className="absolute -left-20 top-1/2 -translate-y-1/2 text-[10px] font-bold text-indigo-500 uppercase tracking-[0.2em] -rotate-90">Pattern</div>
 
-            {/* Logic Explanation Overlay/Watermark */}
-            <div className="absolute bottom-6 right-6 text-right opacity-20 pointer-events-none">
-              <h3 className="text-4xl font-bold">
-                {visState.state === 'match' ? 'MATCH' :
-                  visState.state === 'mismatch' ? 'MISMATCH' :
-                    visState.state === 'found' ? 'FOUND' :
-                      visState.state.toUpperCase()}
-              </h3>
-            </div>
-          </div>
-
-          {/* Comparison Section */}
-          <div className="glass-panel p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold flex items-center gap-2">
-                <BarChart2 className="text-pink-400" size={20} /> Performance Analysis
-              </h2>
-              <button onClick={handleCompare} className="btn text-sm py-2 px-4 shadow-pink-500/20 bg-gradient-to-r from-pink-600 to-rose-600">
-                Run Full Global Benchmark
-              </button>
-            </div>
-
-            {comparisonData ? (
-              <div className="space-y-4">
-                {['naive', 'kmp', 'rabinKarp'].map(algo => {
-                  const data = comparisonData[algo];
-                  const maxTime = Math.max(...Object.values(comparisonData).map(d => d.time));
-                  const maxSteps = Math.max(...Object.values(comparisonData).map(d => d.steps));
-
-                  return (
-                    <div key={algo} className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="font-semibold text-gray-300 capitalize">{ALGOS[algo]?.name || algo}</span>
-                        <span className="text-xs text-gray-400">{data.time.toFixed(4)}ms | {data.steps} ops</span>
-                      </div>
-                      <div className="w-full h-8 bg-slate-800 rounded-full overflow-hidden flex">
-                        {/* Time Bar */}
                         <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${(data.time / maxTime) * 100}%` }}
-                          className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400"
-                          title="Time Taken"
-                        />
+                          className="absolute flex gap-2"
+                          animate={{ left: patternOffset * BOX_OFFSET }}
+                          transition={{ type: "spring", stiffness: 180, damping: 24, mass: 0.8 }}
+                        >
+                          {pattern.split('').map((char, j) => {
+                            const isActive = j === visState.patternIndex;
+                            const isRkWindow = selectedAlgo === 'rk' && ['window', 'hash-mismatch', 'hash-match'].includes(visState.state);
+
+                            let statusClass = "bg-[var(--bg-panel)] border-indigo-500/20 text-indigo-400 opacity-60";
+
+                            if (isActive || isRkWindow) {
+                              if (visState.state === 'match') statusClass = "bg-emerald-600 border-emerald-500 text-white opacity-100";
+                              else if (visState.state === 'mismatch' || visState.state === 'hash-mismatch') statusClass = "bg-rose-600 border-rose-500 text-white opacity-100";
+                              else statusClass = "bg-indigo-600 border-indigo-500 text-white opacity-100 shadow-xl shadow-indigo-500/20";
+                            }
+
+                            return (
+                              <div key={j} className="flex flex-col items-center gap-3">
+                                <div className={`w-[56px] h-[56px] rounded-xl border-2 flex items-center justify-center text-xl font-bold font-mono transition-all duration-300 ${statusClass} ${isActive || isRkWindow ? 'scale-110' : ''}`}>
+                                  {char}
+                                </div>
+                                <span className={`text-xs font-mono ${isActive ? 'text-indigo-400' : 'text-[var(--text-muted)] opacity-50'}`}>{j}</span>
+                              </div>
+                            );
+                          })}
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* INFO PANELS (Tables/Result) */}
+              <div className="shrink-0 w-full max-w-4xl grid grid-cols-2 gap-6 pb-6">
+
+                {/* Algorithm Specific Data (KMP Table / Rabin-Karp Hash) */}
+                {(selectedAlgo === 'kmp' || selectedAlgo === 'rk') && (
+                  <div className="panel p-6 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-4 flex items-center gap-2">
+                      {selectedAlgo === 'kmp' ? <><TableIcon size={14} /> LPS Table</> : <><Hash size={14} /> Hash Values</>}
+                    </h3>
+
+                    {selectedAlgo === 'kmp' && visState.lps && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-center border-collapse">
+                          <thead>
+                            <tr>
+                              {pattern.split('').map((c, i) => (
+                                <th key={i} className="border border-[var(--border)] p-2 text-xs text-[var(--text-muted)] font-mono">{c}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              {visState.lps.map((val, i) => (
+                                <td key={i} className="border border-[var(--border)] p-2 text-sm font-bold text-indigo-400 bg-[var(--bg-sub)]">{val}</td>
+                              ))}
+                            </tr>
+                            <tr>
+                              {pattern.split('').map((_, i) => (
+                                <td key={i} className="border border-[var(--border)] p-1 text-[10px] text-[var(--text-muted)]">{i}</td>
+                              ))}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {selectedAlgo === 'rk' && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-[var(--bg-sub)] p-3 rounded-xl border border-[var(--border)]">
+                          <span className="text-[10px] uppercase text-[var(--text-muted)] block mb-1">Pattern Hash (p)</span>
+                          <span className="text-xl font-mono font-bold text-emerald-400">{visState.hashP !== undefined ? visState.hashP : '-'}</span>
+                        </div>
+                        <div className="bg-[var(--bg-sub)] p-3 rounded-xl border border-[var(--border)]">
+                          <span className="text-[10px] uppercase text-[var(--text-muted)] block mb-1">Window Hash (t)</span>
+                          <span className={`text-xl font-mono font-bold ${visState.hashP === visState.hashT ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {visState.hashT !== undefined ? visState.hashT : '-'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Result Summary (Only when finished) */}
+                {visState.state === 'finished' && (
+                  <div className="panel p-6 flex flex-col justify-between animate-in fade-in slide-in-from-bottom-4 duration-500 border-emerald-500/30 bg-emerald-950/20 col-span-2">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-emerald-400 flex items-center gap-2"><CheckCircle size={18} /> Search Complete</h3>
+                        <p className="text-sm text-emerald-200/60 mt-1">Found {foundIndices.length} matches in {history.length} steps.</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs uppercase tracking-widest text-[var(--text-muted)]">Efficiency</span>
+                        <div className="text-2xl font-bold text-white">{((foundIndices.length / history.length) * 100).toFixed(1)}%</div>
                       </div>
                     </div>
-                  );
+
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wide">Found at Indices</h4>
+                      <div className="flex gap-2 flex-wrap">
+                        {foundIndices.length > 0 ? foundIndices.map((idx, i) => (
+                          <span key={i} className="px-3 py-1 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-mono text-sm">
+                            {idx}
+                          </span>
+                        )) : <span className="text-sm text-[var(--text-muted)] italic">No matches found.</span>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
+            </div>
+          )}
+
+          {activeTab === 'theory' && (
+            <div className="max-w-6xl mx-auto p-12">
+              <div className="mb-10 p-8 rounded-2xl bg-gradient-to-r from-indigo-900/10 to-violet-900/10 border border-indigo-500/10">
+                <h2 className="text-4xl font-bold text-white mb-3">Algorithm Theory</h2>
+                <p className="text-[var(--text-muted)] text-lg">Understanding the mechanics and time complexity of string matching.</p>
+              </div>
+
+              <div className="space-y-8">
+                {Object.keys(algorithmTheory).map(key => {
+                  const data = algorithmTheory[key];
+                  return (
+                    <div key={key} className="panel p-0 overflow-hidden">
+                      <div className="p-8 border-b border-[var(--border)] bg-[var(--bg-sub)] flex justify-between items-center">
+                        <h3 className="text-2xl font-bold text-white tracking-tight">{data.title}</h3>
+                        <div className="flex gap-4 text-xs font-mono font-bold">
+                          <span className="px-4 py-2 bg-[var(--bg-panel)] rounded-lg border border-[var(--border)] text-indigo-400 uppercase tracking-widest">Time: {data.complexity.time}</span>
+                          <span className="px-4 py-2 bg-[var(--bg-panel)] rounded-lg border border-[var(--border)] text-fuchsia-400 uppercase tracking-widest">Space: {data.complexity.space}</span>
+                        </div>
+                      </div>
+                      <div className="p-10 grid grid-cols-1 xl:grid-cols-3 gap-12">
+                        <div className="xl:col-span-2 space-y-8">
+                          <p className="text-base leading-7 text-[var(--text-muted)]">{data.description}</p>
+                          <div>
+                            <h4 className="text-xs font-bold text-white uppercase tracking-widest mb-6">Algorithm Steps</h4>
+                            <ul className="space-y-4">
+                              {data.steps.map((step, i) => (
+                                <li key={i} className="flex gap-4 text-sm text-[var(--text-muted)] group">
+                                  <span className="shrink-0 w-8 h-8 rounded-lg bg-[var(--bg-panel)] border border-[var(--border)] group-hover:border-indigo-500/50 group-hover:text-indigo-400 transition-colors flex items-center justify-center text-xs font-mono">{i + 1}</span>
+                                  <span className="pt-1.5">{step}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                        <div className="space-y-8">
+                          <div className="p-6 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border)]">
+                            <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Zap size={14} /> Advantages</h4>
+                            <ul className="space-y-3">
+                              {data.pros.map((p, i) => (
+                                <li key={i} className="text-sm text-[var(--text-muted)] flex items-start gap-3">
+                                  <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" /> {p}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="p-6 rounded-2xl bg-[var(--bg-panel)] border border-[var(--border)]">
+                            <h4 className="text-xs font-bold text-rose-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Info size={14} /> Limitations</h4>
+                            <ul className="space-y-3">
+                              {data.cons.map((c, i) => (
+                                <li key={i} className="text-sm text-[var(--text-muted)] flex items-start gap-3">
+                                  <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" /> {c}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
                 })}
               </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                Click "Run Benchmark" to compare efficiency on current text inputs.
-              </div>
-            )}
-          </div>
+            </div>
+          )}
+
         </div>
-      </div>
+      </main>
     </div>
   );
 }
