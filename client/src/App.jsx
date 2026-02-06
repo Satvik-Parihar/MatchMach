@@ -211,13 +211,10 @@ function App() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-4 mr-4 text-sm font-mono text-[var(--text-muted)] border-r border-[var(--border)] pr-8 h-8">
                 <span>Step: <span className="text-white font-bold">{currentStep}</span></span>
-                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${visState.state === 'match' ? 'bg-emerald-500/10 text-emerald-500' :
-                  visState.state === 'mismatch' ? 'bg-red-500/10 text-red-500' :
-                    'bg-indigo-500/10 text-indigo-400'
-                  }`}>
-                  {visState.message.slice(0, 30)}{visState.message.length > 30 ? '...' : ''}
-                </span>
+                <span className="mx-2 opacity-30">|</span>
+                <span>Shift: <span className="text-white font-bold">{patternOffset}</span></span>
               </div>
+
 
               <div className="flex items-center bg-[var(--bg-sub)] rounded-lg p-1 gap-1 border border-[var(--border)]">
                 <button onClick={prevStep} className="p-2 hover:text-white text-[var(--text-muted)] transition-colors rounded-md" disabled={currentStep === 0}><ChevronLeft size={18} /></button>
@@ -237,6 +234,26 @@ function App() {
 
           {activeTab === 'visualizer' && (
             <div className="w-full h-full flex flex-col items-center relative p-8">
+
+              {/* Legend / Key - Moved from Header */}
+              <div className="flex items-center justify-center gap-8 mb-8 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-sub)] px-8 py-3 rounded-full border border-[var(--border)] shadow-lg shadow-black/20">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]"></div>
+                  <span>Current</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
+                  <span>Match</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]"></div>
+                  <span>Mismatch</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]"></div>
+                  <span>Found</span>
+                </div>
+              </div>
 
               {/* VISUALIZATION CANVAS */}
               <div className="flex-1 w-full max-w-full overflow-x-auto p-4 flex flex-col items-center justify-center no-scrollbar">
@@ -307,7 +324,10 @@ function App() {
                                 <div className={`w-[56px] h-[56px] rounded-xl border-2 flex items-center justify-center text-xl font-bold font-mono transition-all duration-300 ${statusClass} ${isActive || isRkWindow ? 'scale-110' : ''}`}>
                                   {char}
                                 </div>
-                                <span className={`text-xs font-mono ${isActive ? 'text-indigo-400' : 'text-[var(--text-muted)] opacity-50'}`}>{j}</span>
+                                {/* Updated to show Global Index (shifted) */}
+                                <span className={`text-xs font-mono font-bold ${isActive ? 'text-indigo-400' : 'text-[var(--text-muted)] opacity-50'}`}>
+                                  {j + patternOffset}
+                                </span>
                               </div>
                             );
                           })}
@@ -355,16 +375,35 @@ function App() {
                     )}
 
                     {selectedAlgo === 'rk' && (
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-[var(--bg-sub)] p-3 rounded-xl border border-[var(--border)]">
-                          <span className="text-[10px] uppercase text-[var(--text-muted)] block mb-1">Pattern Hash (p)</span>
-                          <span className="text-xl font-mono font-bold text-emerald-400">{visState.hashP !== undefined ? visState.hashP : '-'}</span>
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-[var(--bg-sub)] p-3 rounded-xl border border-[var(--border)]">
+                            <span className="text-[10px] uppercase text-[var(--text-muted)] block mb-1">Pattern Hash (p)</span>
+                            <span className="text-xl font-mono font-bold text-emerald-400">{visState.hashP !== undefined ? visState.hashP : '-'}</span>
+                          </div>
+                          <div className="bg-[var(--bg-sub)] p-3 rounded-xl border border-[var(--border)]">
+                            <span className="text-[10px] uppercase text-[var(--text-muted)] block mb-1">Window Hash (t)</span>
+                            <span className={`text-xl font-mono font-bold ${visState.hashP === visState.hashT ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {visState.hashT !== undefined ? visState.hashT : '-'}
+                            </span>
+                          </div>
                         </div>
+
+                        {/* Hash Function Legend */}
                         <div className="bg-[var(--bg-sub)] p-3 rounded-xl border border-[var(--border)]">
-                          <span className="text-[10px] uppercase text-[var(--text-muted)] block mb-1">Window Hash (t)</span>
-                          <span className={`text-xl font-mono font-bold ${visState.hashP === visState.hashT ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {visState.hashT !== undefined ? visState.hashT : '-'}
-                          </span>
+                          <h4 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2 flex items-center gap-2">
+                            Full Sum Hash Function
+                          </h4>
+                          <div className="flex gap-2 flex-wrap text-xs font-mono text-[var(--text-muted)]">
+                            <span className="bg-[var(--bg-panel)] px-2 py-1 rounded border border-[var(--border)]">a=1</span>
+                            <span className="bg-[var(--bg-panel)] px-2 py-1 rounded border border-[var(--border)]">b=2</span>
+                            <span className="bg-[var(--bg-panel)] px-2 py-1 rounded border border-[var(--border)]">c=3</span>
+                            <span className="opacity-50">...</span>
+                            <span className="bg-[var(--bg-panel)] px-2 py-1 rounded border border-[var(--border)]">z=26</span>
+                          </div>
+                          <p className="text-[10px] text-[var(--text-muted)] mt-2 italic">
+                            Hash = Sum of character values in the window.
+                          </p>
                         </div>
                       </div>
                     )}
@@ -390,7 +429,7 @@ function App() {
                       <div className="flex gap-2 flex-wrap">
                         {foundIndices.length > 0 ? foundIndices.map((idx, i) => (
                           <span key={i} className="px-3 py-1 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-mono text-sm">
-                            {idx}
+                            Shift {idx}
                           </span>
                         )) : <span className="text-sm text-[var(--text-muted)] italic">No matches found.</span>}
                       </div>
@@ -417,13 +456,29 @@ function App() {
                     <div key={key} className="panel p-0 overflow-hidden">
                       <div className="p-8 border-b border-[var(--border)] bg-[var(--bg-sub)] flex justify-between items-center">
                         <h3 className="text-2xl font-bold text-white tracking-tight">{data.title}</h3>
-                        <div className="flex gap-4 text-xs font-mono font-bold">
-                          <span className="px-4 py-2 bg-[var(--bg-panel)] rounded-lg border border-[var(--border)] text-indigo-400 uppercase tracking-widest">Time: {data.complexity.time}</span>
-                          <span className="px-4 py-2 bg-[var(--bg-panel)] rounded-lg border border-[var(--border)] text-fuchsia-400 uppercase tracking-widest">Space: {data.complexity.space}</span>
-                        </div>
                       </div>
-                      <div className="p-10 grid grid-cols-1 xl:grid-cols-3 gap-12">
+                      <div className="p-8 grid grid-cols-1 xl:grid-cols-3 gap-12">
                         <div className="xl:col-span-2 space-y-8">
+                          {/* Complexity Grid */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="p-4 rounded-xl bg-[var(--bg-main)] border border-[var(--border)] text-center">
+                              <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Time (Best)</div>
+                              <div className="text-emerald-400 font-mono font-bold text-lg">{data.complexity.best}</div>
+                            </div>
+                            <div className="p-4 rounded-xl bg-[var(--bg-main)] border border-[var(--border)] text-center">
+                              <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Time (Avg)</div>
+                              <div className="text-indigo-400 font-mono font-bold text-lg">{data.complexity.average}</div>
+                            </div>
+                            <div className="p-4 rounded-xl bg-[var(--bg-main)] border border-[var(--border)] text-center">
+                              <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Time (Worst)</div>
+                              <div className="text-rose-400 font-mono font-bold text-lg">{data.complexity.worst}</div>
+                            </div>
+                            <div className="p-4 rounded-xl bg-[var(--bg-main)] border border-[var(--border)] text-center">
+                              <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Space</div>
+                              <div className="text-fuchsia-400 font-mono font-bold text-lg">{data.complexity.space}</div>
+                            </div>
+                          </div>
+
                           <p className="text-base leading-7 text-[var(--text-muted)]">{data.description}</p>
                           <div>
                             <h4 className="text-xs font-bold text-white uppercase tracking-widest mb-6">Algorithm Steps</h4>

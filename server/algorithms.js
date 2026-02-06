@@ -83,42 +83,41 @@ function kmp(text, pattern) {
     return { matches, time: end - start, steps };
 }
 
-// Rabin-Karp Algorithm
+// Rabin-Karp Algorithm with Simple Sum Hash (a=1, b=2...)
+// Helper to get weight: a/A=1, b/B=2, ... z/Z=26, others=0
+function getCharWeight(char) {
+    const code = char.toLowerCase().charCodeAt(0);
+    if (code >= 97 && code <= 122) return code - 96;
+    return 0;
+}
+
 function rabinKarp(text, pattern) {
-    const d = 256; // Number of characters in the input alphabet
-    const q = 101; // A prime number
     const n = text.length;
     const m = pattern.length;
     const matches = [];
     let steps = 0;
-    
+
     // If pattern is empty or longer than text
-    if(m === 0 || m > n) return { matches: [], time: 0, steps: 0 };
+    if (m === 0 || m > n) return { matches: [], time: 0, steps: 0 };
 
     const start = performance.now();
     let p = 0; // Hash value for pattern
-    let t = 0; // Hash value for text
-    let h = 1;
+    let t = 0; // Hash value for text window
 
-    // The value of h would be "pow(d, m-1)%q"
-    for (let i = 0; i < m - 1; i++) {
-        h = (h * d) % q;
-        steps++;
-    }
-
-    // Calculate the hash value of pattern and first window of text
+    // Calculate initial hash (Sum of weights)
     for (let i = 0; i < m; i++) {
-        p = (d * p + pattern.charCodeAt(i)) % q;
-        t = (d * t + text.charCodeAt(i)) % q;
+        p += getCharWeight(pattern[i]);
+        t += getCharWeight(text[i]);
         steps++;
     }
 
     // Slide the pattern over text one by one
     for (let i = 0; i <= n - m; i++) {
-        // Check the hash values of current window of text and pattern.
-        // If the hash values match then only check for characters one by one
-        steps++; // outer comparison
+        steps++; // outer check
+
+        // 1. Check Hash
         if (p === t) {
+            // 2. If Hash matches, check characters
             let j;
             for (j = 0; j < m; j++) {
                 steps++;
@@ -131,15 +130,12 @@ function rabinKarp(text, pattern) {
             }
         }
 
-        // Calculate hash value for next window of text: Remove leading digit,
-        // add trailing digit
+        // 3. Rolling Hash: Remove leading, add trailing
         if (i < n - m) {
-            t = (d * (t - text.charCodeAt(i) * h) + text.charCodeAt(i + m)) % q;
+            const leavingWeight = getCharWeight(text[i]);
+            const enteringWeight = getCharWeight(text[i + m]);
 
-            // We might get negative value of t, converting it to positive
-            if (t < 0) {
-                t = (t + q);
-            }
+            t = t - leavingWeight + enteringWeight;
         }
     }
     const end = performance.now();

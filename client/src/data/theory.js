@@ -3,7 +3,9 @@ export const algorithmTheory = {
     naive: {
         title: "Naive String Matching",
         complexity: {
-            time: "O((n-m+1) * m)",
+            best: "O(n)",
+            average: "O(n)",
+            worst: "O(m * (n-m+1))",
             space: "O(1)"
         },
         description: "The Naive String Matching algorithm is the simplest method for finding a pattern within a text. It slides the pattern over the text one by one and checks for a match. If a mismatch is found, it shifts the pattern by one position to the right.",
@@ -20,7 +22,9 @@ export const algorithmTheory = {
     kmp: {
         title: "Knuth-Morris-Pratt (KMP)",
         complexity: {
-            time: "O(n + m)",
+            best: "O(n + m)",
+            average: "O(n + m)",
+            worst: "O(n + m)",
             space: "O(m)"
         },
         description: "The KMP algorithm improves upon the naive approach by avoiding unnecessary comparisons. It uses a preprocessed 'Partial Match Table' (LPS array) to determine how much to shift the pattern when a mismatch occurs, ensuring we never backtrack in the text.",
@@ -37,7 +41,9 @@ export const algorithmTheory = {
     rk: {
         title: "Rabin-Karp Algorithm",
         complexity: {
-            time: "Average O(n + m), Worst O(nm)",
+            best: "O(n + m)",
+            average: "O(n + m)",
+            worst: "O(n * m)",
             space: "O(1)"
         },
         description: "The Rabin-Karp algorithm uses hashing to find any one of a set of pattern strings in a text. It calculates a hash value for the pattern and for each substring of the text of the same length. If the hash values match, it performs a character-by-character check to confirm (handling hash collisions).",

@@ -115,30 +115,41 @@ export const kmpGenerator = function* (text, pattern) {
     yield { state: 'finished', message: 'Search Completed', lps: [...lps] };
 };
 
+// Helper for visualizer
+const getCharWeight = (char) => {
+    const code = char.toLowerCase().charCodeAt(0);
+    if (code >= 97 && code <= 122) return code - 96;
+    return 0;
+};
+
 export const rabinKarpGenerator = function* (text, pattern) {
-    const d = 256;
-    const q = 101;
     const n = text.length;
     const m = pattern.length;
-    let p = 0;
-    let t = 0;
-    let h = 1;
 
-    for (let i = 0; i < m - 1; i++) {
-        h = (h * d) % q;
-    }
+    // Initial Hash Calculation (Sum)
+    let p = 0; // Pattern Hash
+    let t = 0; // Text Window Hash
 
     for (let i = 0; i < m; i++) {
-        p = (d * p + pattern.charCodeAt(i)) % q;
-        t = (d * t + text.charCodeAt(i)) % q;
+        p += getCharWeight(pattern[i]);
+        t += getCharWeight(text[i]);
     }
+
+    yield {
+        textIndex: -1,
+        patternIndex: -1,
+        state: 'init',
+        message: `Initial Hash: Pattern=${p}, Window=${t}`,
+        hashP: p,
+        hashT: t
+    };
 
     for (let i = 0; i <= n - m; i++) {
         yield {
             textIndex: i,
             patternIndex: -1,
             state: 'window',
-            message: `Comparing Hash Values`,
+            message: `Comparing Hashes: ${p} vs ${t}`,
             hashP: p,
             hashT: t
         };
@@ -148,7 +159,7 @@ export const rabinKarpGenerator = function* (text, pattern) {
                 textIndex: i,
                 patternIndex: 0,
                 state: 'hash-match',
-                message: `Hash Match! Checking characters...`,
+                message: `Hash Match! (${p}) Verifying chars...`,
                 hashP: p,
                 hashT: t
             };
@@ -160,7 +171,7 @@ export const rabinKarpGenerator = function* (text, pattern) {
                     textIndex: i + j,
                     patternIndex: j,
                     state: isMatch ? 'match' : 'mismatch',
-                    message: isMatch ? `Char Match: ${text[i + j]}` : `Char Mismatch`,
+                    message: isMatch ? `Char Match: ${text[i + j]}` : `Mismatch at ${text[i + j]}`,
                     hashP: p,
                     hashT: t
                 };
@@ -171,25 +182,35 @@ export const rabinKarpGenerator = function* (text, pattern) {
                     textIndex: i,
                     patternIndex: 0,
                     state: 'found',
-                    message: `Pattern found at ${i}`,
+                    message: `Pattern found at index ${i}`,
                     hashP: p,
                     hashT: t
                 };
             }
         } else {
+            // Just a visual step for mismatch
+            // No yield here needed specifically unless we want to pause on every non-match hash
+            // The 'window' state above covered the comparison visualization
+        }
+
+        // Rolling Hash Update
+        if (i < n - m) {
+            const leavingChar = text[i];
+            const enteringChar = text[i + m];
+            const leavingWeight = getCharWeight(leavingChar);
+            const enteringWeight = getCharWeight(enteringChar);
+
+            const oldT = t;
+            t = t - leavingWeight + enteringWeight;
+
             yield {
                 textIndex: i,
-                patternIndex: -1, // No specific character pattern index during hash check
-                state: 'hash-mismatch',
-                message: `Hash Mismatch: ${p} != ${t}`,
+                patternIndex: -1,
+                state: 'shift', // Using shift to denote the calculation update
+                message: `Roll: ${oldT} - ${leavingChar}(${leavingWeight}) + ${enteringChar}(${enteringWeight}) = ${t}`,
                 hashP: p,
                 hashT: t
             };
-        }
-
-        if (i < n - m) {
-            t = (d * (t - text.charCodeAt(i) * h) + text.charCodeAt(i + m)) % q;
-            if (t < 0) t = (t + q);
         }
     }
     yield { state: 'finished', message: 'Search Completed' };
